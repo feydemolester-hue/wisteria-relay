@@ -25,11 +25,17 @@ self.addEventListener('fetch', e => {
 self.addEventListener('notificationclick', e => {
   const d = e.notification.data || {}; e.notification.close();
   if (!d.call) return;
-  const act = e.action === 'accept' ? 'accept' : e.action === 'decline' ? 'decline' : 'focus';
-  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
-    cs.forEach(c => c.postMessage({ wisteriaCall: act, from: d.from }));
-    if (act === 'decline') return;
-    const c = cs.find(x => 'focus' in x); if (c) return c.focus();
-    return self.clients.openWindow('./');
+  // Clicking the button OR the notification itself answers the call; only "Decline" declines.
+  const act = e.action === 'decline' ? 'decline' : 'accept';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async cs => {
+    const c = cs.find(x => 'focus' in x);
+    if (act === 'decline') { cs.forEach(x => x.postMessage({ wisteriaCall: act, from: d.from })); return; }
+    if (c) {
+      try { await c.focus(); } catch {}   // restores a minimized window and brings it to the front
+      cs.forEach(x => x.postMessage({ wisteriaCall: 'accept', from: d.from }));
+      return;
+    }
+    // page was closed: open it and let it answer as soon as the call invite arrives
+    return self.clients.openWindow('./?answer=' + encodeURIComponent(d.from || ''));
   }));
 });
